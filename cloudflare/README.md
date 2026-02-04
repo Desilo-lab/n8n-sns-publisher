@@ -30,65 +30,101 @@ GitHub Webhook
 | R2 | 무료 (10GB) |
 | **총** | **~$5/월** |
 
-## 배포
+## 배포 (GitHub Actions 자동화)
 
-### 1. 사전 준비
+### 1. GitHub Secrets 설정
+
+Repository → Settings → Secrets and variables → Actions → **New repository secret**
+
+#### 필수
+
+| Secret | 설명 | 발급 방법 |
+|--------|------|----------|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API 토큰 | [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) → Create Token → **Edit Cloudflare Workers** 템플릿 사용 |
+
+#### X (Twitter) API
+
+| Secret | 설명 | 발급 방법 |
+|--------|------|----------|
+| `X_API_KEY` | Consumer Key | [X Developer Portal](https://developer.twitter.com) → Project → Keys and tokens |
+| `X_API_SECRET` | Consumer Secret | 위와 동일 |
+| `X_ACCESS_TOKEN` | Access Token | 위와 동일 (User authentication) |
+| `X_ACCESS_TOKEN_SECRET` | Access Token Secret | 위와 동일 |
+
+#### Threads API
+
+| Secret | 설명 | 발급 방법 |
+|--------|------|----------|
+| `THREADS_ACCESS_TOKEN` | Long-lived Access Token | [Meta Developer](https://developers.facebook.com) → 앱 생성 → Threads API → Access Token 발급 |
+
+#### 알림 (선택)
+
+| Secret | 설명 | 발급 방법 |
+|--------|------|----------|
+| `DISCORD_WEBHOOK_URL` | Discord Webhook | 서버 → 채널 설정 → 연동 → 웹훅 → URL 복사 |
+
+---
+
+### API 토큰 발급 가이드
+
+#### Cloudflare API Token
+1. https://dash.cloudflare.com/profile/api-tokens
+2. **Create Token**
+3. **Edit Cloudflare Workers** 템플릿 선택
+4. Account Resources: 본인 계정 선택
+5. Zone Resources: All zones (또는 특정 도메인)
+6. **Continue to summary** → **Create Token**
+7. 토큰 복사 (한 번만 보임!)
+
+#### X (Twitter) API
+1. https://developer.twitter.com 접속
+2. Developer Portal → Projects & Apps → 새 프로젝트
+3. App permissions: **Read and write**
+4. Keys and tokens 탭:
+   - Consumer Keys → API Key & Secret
+   - Authentication Tokens → Access Token & Secret
+
+#### Threads API
+1. https://developers.facebook.com 접속
+2. My Apps → Create App → Business 타입
+3. Products → **Threads API** 추가
+4. 권한: `threads_basic`, `threads_content_publish`
+5. Access Token 발급 (60일 유효, 갱신 필요)
+
+### 2. 초기 설정 (1회)
+
+Actions → **Initial Setup** → Run workflow
+
+이 워크플로우가:
+- D1 데이터베이스 생성
+- R2 버킷 생성
+- 스키마 적용
+
+### 3. D1 ID 업데이트
+
+1. Cloudflare Dashboard → D1 → sns-publisher-db
+2. database_id 복사
+3. `cloudflare/wrangler.jsonc` 업데이트
+4. 커밋 & 푸시
+
+### 4. 자동 배포
+
+`cloudflare/` 폴더 변경 시 자동으로:
+- Secrets 설정
+- Worker 배포
+- Container 이미지 빌드 & 푸시
+
+---
+
+## 수동 배포 (로컬)
 
 ```bash
-# Wrangler 설치
+# Wrangler 설치 & 로그인
 npm install -g wrangler
-
-# 로그인
 wrangler login
-```
 
-### 2. D1 데이터베이스 생성
-
-```bash
-# 데이터베이스 생성
-wrangler d1 create sns-publisher-db
-
-# 출력된 database_id를 wrangler.jsonc에 입력
-
-# 스키마 적용
-wrangler d1 execute sns-publisher-db --file=schema.sql
-```
-
-### 3. R2 버킷 생성
-
-```bash
-wrangler r2 bucket create sns-publisher-assets
-```
-
-### 4. Secrets 설정
-
-```bash
-# X (Twitter) API
-wrangler secret put X_API_KEY
-wrangler secret put X_API_SECRET
-wrangler secret put X_ACCESS_TOKEN
-wrangler secret put X_ACCESS_TOKEN_SECRET
-
-# Threads
-wrangler secret put THREADS_ACCESS_TOKEN
-
-# Discord (선택)
-wrangler secret put DISCORD_WEBHOOK_URL
-```
-
-### 5. Container 이미지 빌드 & 푸시
-
-```bash
-# 이미지 빌드
-wrangler containers build ./n8n-image
-
-# 푸시
-wrangler containers push
-```
-
-### 6. 배포
-
-```bash
+# 배포
+cd cloudflare
 wrangler deploy
 ```
 
