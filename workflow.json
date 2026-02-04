@@ -1,0 +1,387 @@
+{
+  "name": "GitHub → SNS Auto Publisher",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-content",
+        "responseMode": "onReceived",
+        "responseData": "allEntries"
+      },
+      "id": "webhook-github",
+      "name": "GitHub Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.commits[0].added[0] || $json.commits[0].modified[0] || '' }}",
+              "operation": "startsWith",
+              "value2": "content/posts/"
+            }
+          ]
+        }
+      },
+      "id": "filter-content-path",
+      "name": "Filter content/posts/",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// 변경된 파일 경로들 추출\nconst commits = items[0].json.commits || [];\nconst files = [];\n\nfor (const commit of commits) {\n  const allFiles = [...(commit.added || []), ...(commit.modified || [])];\n  for (const file of allFiles) {\n    if (file.startsWith('content/posts/') && file.endsWith('.md')) {\n      files.push({\n        path: file,\n        repo: items[0].json.repository.full_name,\n        branch: items[0].json.ref.replace('refs/heads/', '')\n      });\n    }\n  }\n}\n\nreturn files.map(f => ({ json: f }));"
+      },
+      "id": "extract-files",
+      "name": "Extract Post Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://raw.githubusercontent.com/{{ $json.repo }}/{{ $json.branch }}/{{ $json.path }}",
+        "options": {}
+      },
+      "id": "fetch-content",
+      "name": "Fetch Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// 마크다운 프론트매터 파싱\nconst content = items[0].json.data || items[0].json.body || '';\nconst frontmatterRegex = /^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/;\nconst match = content.match(frontmatterRegex);\n\nlet meta = {};\nlet body = content;\n\nif (match) {\n  const yamlStr = match[1];\n  body = match[2].trim();\n  \n  // 간단한 YAML 파싱\n  yamlStr.split('\\n').forEach(line => {\n    const [key, ...valueParts] = line.split(':');\n    if (key && valueParts.length) {\n      let value = valueParts.join(':').trim();\n      // 배열 처리 [x, threads, linkedin]\n      if (value.startsWith('[') && value.endsWith(']')) {\n        value = value.slice(1, -1).split(',').map(s => s.trim());\n      }\n      meta[key.trim()] = value;\n    }\n  });\n}\n\n// 플랫폼별 텍스트 길이 조정\nconst title = meta.title || '';\nconst platforms = meta.platforms || ['x', 'threads', 'linkedin'];\nconst image = meta.image || null;\n\n// X는 280자 제한\nconst xText = body.length > 270 ? body.substring(0, 267) + '...' : body;\n\n// Threads/LinkedIn은 더 길어도 됨\nconst threadsText = body.length > 500 ? body.substring(0, 497) + '...' : body;\nconst linkedinText = body;\n\nreturn [{\n  json: {\n    title,\n    body,\n    image,\n    platforms: Array.isArray(platforms) ? platforms : [platforms],\n    xText,\n    threadsText,\n    linkedinText,\n    publishX: Array.isArray(platforms) ? platforms.includes('x') : true,\n    publishThreads: Array.isArray(platforms) ? platforms.includes('threads') : true,\n    publishLinkedin: Array.isArray(platforms) ? platforms.includes('linkedin') : true\n  }\n}];"
+      },
+      "id": "parse-content",
+      "name": "Parse Markdown",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.publishX }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-x",
+      "name": "Publish to X?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 150]
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.xText }}",
+        "additionalFields": {}
+      },
+      "id": "post-x",
+      "name": "Post to X",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [1450, 100],
+      "credentials": {
+        "twitterOAuth2Api": {
+          "id": "REPLACE_WITH_X_CREDENTIAL_ID",
+          "name": "X OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.publishThreads }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-threads",
+      "name": "Publish to Threads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://graph.threads.net/v1.0/me/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "TEXT"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.threadsText }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-threads-container",
+      "name": "Create Threads Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1450, 250],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "REPLACE_WITH_THREADS_CREDENTIAL_ID",
+          "name": "Threads OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.threads.net/v1.0/me/threads_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "publish-threads",
+      "name": "Publish Threads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1650, 250],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "REPLACE_WITH_THREADS_CREDENTIAL_ID",
+          "name": "Threads OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.publishLinkedin }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-linkedin",
+      "name": "Publish to LinkedIn?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 450]
+    },
+    {
+      "parameters": {
+        "url": "https://api.linkedin.com/v2/ugcPosts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"author\": \"urn:li:person:REPLACE_WITH_PERSON_URN\",\n  \"lifecycleState\": \"PUBLISHED\",\n  \"specificContent\": {\n    \"com.linkedin.ugc.ShareContent\": {\n      \"shareCommentary\": {\n        \"text\": \"{{ $json.linkedinText }}\"\n      },\n      \"shareMediaCategory\": \"NONE\"\n    }\n  },\n  \"visibility\": {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n}",
+        "options": {}
+      },
+      "id": "post-linkedin",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1450, 400],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "REPLACE_WITH_LINKEDIN_CREDENTIAL_ID",
+          "name": "LinkedIn OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": \"✅ SNS 자동 발행 완료\",\n    \"description\": \"{{ $('Parse Markdown').item.json.title || 'New Post' }}\",\n    \"color\": 5763719,\n    \"fields\": [\n      {\n        \"name\": \"📝 내용\",\n        \"value\": \"{{ $('Parse Markdown').item.json.body.substring(0, 100) }}...\"\n      },\n      {\n        \"name\": \"📱 발행 플랫폼\",\n        \"value\": \"{{ $('Parse Markdown').item.json.platforms.join(', ') }}\",\n        \"inline\": true\n      }\n    ],\n    \"timestamp\": \"{{ new Date().toISOString() }}\"\n  }]\n}",
+        "options": {}
+      },
+      "id": "discord-notify",
+      "name": "Discord Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {},
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1650, 400]
+    }
+  ],
+  "connections": {
+    "GitHub Webhook": {
+      "main": [
+        [
+          {
+            "node": "Filter content/posts/",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter content/posts/": {
+      "main": [
+        [
+          {
+            "node": "Extract Post Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Post Files": {
+      "main": [
+        [
+          {
+            "node": "Fetch Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Content": {
+      "main": [
+        [
+          {
+            "node": "Parse Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Markdown": {
+      "main": [
+        [
+          {
+            "node": "Publish to X?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Publish to Threads?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Publish to LinkedIn?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to X?": {
+      "main": [
+        [
+          {
+            "node": "Post to X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to Threads?": {
+      "main": [
+        [
+          {
+            "node": "Create Threads Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Threads Post": {
+      "main": [
+        [
+          {
+            "node": "Publish Threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to LinkedIn?": {
+      "main": [
+        [
+          {
+            "node": "Post to LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to X": {
+      "main": [
+        [
+          {
+            "node": "Discord Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Threads": {
+      "main": [
+        [
+          {
+            "node": "Discord Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Discord Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
