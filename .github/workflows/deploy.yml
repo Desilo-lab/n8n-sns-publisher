@@ -1,0 +1,43 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Worker + Container
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Wrangler
+        run: npm install -g wrangler
+      
+      - name: Deploy Worker
+        working-directory: ./cloudflare
+        env: CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "${{ secrets.X_API_KEY }}" | wrangler secret put X_API_KEY 2>/dev/null || true
+          echo "${{ secrets.X_API_SECRET }}" | wrangler secret put X_API_SECRET 2>/dev/null || true
+          echo "${{ secrets.X_ACCESS_TOKEN }}" | wrangler secret put X_ACCESS_TOKEN 2>/dev/null || true
+          echo "${{ secrets.X_ACCESS_TOKEN_SECRET }}" | wrangler secret put X_ACCESS_TOKEN_SECRET 2>/dev/null || true
+          echo "${{ secrets.THREADS_ACCESS_TOKEN }}" | wrangler secret put THREADS_ACCESS_TOKEN 2>/dev/null || true
+          echo "${{ secrets.DISCORD_WEBHOOK_URL }}" | wrangler secret put DISCORD_WEBHOOK_URL 2>/dev/null || true
+          wrangler deploy
+      
+      - name: Deploy Container (if changed)
+        working-directory: ./cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          wrangler containers build ./n8n-image
+          wrangler containers push
