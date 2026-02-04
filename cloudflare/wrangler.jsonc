@@ -1,0 +1,36 @@
+{
+  "name": "sns-publisher",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-16",
+  
+  // Containers 설정
+  "containers": [
+    {
+      "class_name": "N8nContainer",
+      "image": "./n8n-image",
+      "max_instances": 1
+    }
+  ],
+  
+  // D1 데이터베이스 (발행 로그)
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sns-publisher-db",
+      "database_id": "<YOUR_D1_DATABASE_ID>"
+    }
+  ],
+  
+  // R2 버킷 (이미지 저장)
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "sns-publisher-assets"
+    }
+  ],
+  
+  // 환경변수 (API 키는 secrets로)
+  "vars": {
+    "DISCORD_WEBHOOK_URL": ""
+  }
+}
