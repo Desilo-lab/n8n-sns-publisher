@@ -1,0 +1,39 @@
+name: Initial Setup (Run Once)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    name: Create D1 + R2 + Apply Schema
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Wrangler
+        run: npm install -g wrangler
+      
+      - name: Create D1 Database
+        working-directory: ./cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          wrangler d1 create sns-publisher-db 2>/dev/null || echo "D1 already exists"
+          wrangler d1 execute sns-publisher-db --file=schema.sql --remote
+            
+      - name: Create R2 Bucket
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          wrangler r2 bucket create sns-publisher-assets 2>/dev/null || echo "R2 bucket already exists"
+      
+      - name: Output Setup Info
+        run: |
+          echo "✅ Setup complete!"
+          echo "Next: Copy D1 database_id to wrangler.jsonc"
