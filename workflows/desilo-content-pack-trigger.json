@@ -1,0 +1,93 @@
+{
+  "name": "Desilo Content Pack Trigger",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "desilo-content-pack",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 280],
+      "webhookId": "desilo-content-pack"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/Desilo-team/desilo/dispatches",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_type: 'n8n-content-generate', client_payload: { hypothesis_path: $json.body?.hypothesis_path || '01-hypotheses/default', channels: $json.body?.channels || 'linkedin,threads', include_image: $json.body?.include_image ?? true, allow_statuses: $json.body?.allow_statuses || 'validated,partial', overwrite: $json.body?.overwrite ?? false } }) }}",
+        "options": {}
+      },
+      "id": "http-1",
+      "name": "Dispatch to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "GitHub Dispatch Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, dispatched: true, event_type: 'n8n-content-generate', timestamp: $now.toISO() } }}",
+        "options": {}
+      },
+      "id": "respond-1",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 280]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Dispatch to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch to GitHub": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
