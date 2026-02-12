@@ -18,7 +18,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.github.com/repos/Desilo-team/desilo/dispatches",
+        "url": "=https://api.github.com/repos/{{ $env.DESILO_OWNER || 'Desilo-team' }}/{{ $env.DESILO_REPO || 'desilo' }}/dispatches",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -30,20 +30,26 @@
             },
             {
               "name": "X-GitHub-Api-Version",
-              "value": "2022-11-28"
+              "value": "={{ $env.DESILO_API_VERSION || '2022-11-28' }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ event_type: 'n8n-content-generate', client_payload: { hypothesis_path: $json.body?.hypothesis_path || '01-hypotheses/default', channels: $json.body?.channels || 'linkedin,threads', include_image: $json.body?.include_image ?? true, allow_statuses: $json.body?.allow_statuses || 'validated,partial', overwrite: $json.body?.overwrite ?? false } }) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({ event_type: $env.DESILO_EVENT_TYPE || 'n8n-content-generate', client_payload: { hypothesis_path: $json.body.hypothesis_path, channels: $json.body.channels || 'linkedin,x,threads', include_image: $json.body.include_image ?? true, allow_statuses: $json.body.allow_statuses || 'validated,partial', overwrite: $json.body.overwrite ?? false } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
       },
       "id": "http-1",
       "name": "Dispatch to GitHub",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [560, 280],
+      "position": [520, 280],
       "credentials": {
         "httpHeaderAuth": {
           "name": "GitHub Dispatch Token"
@@ -52,15 +58,56 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-path",
+              "leftValue": "={{ $json.body.hypothesis_path }}",
+              "rightValue": "01-hypotheses/",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Validate Path",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [380, 280]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { success: true, dispatched: true, event_type: 'n8n-content-generate', timestamp: $now.toISO() } }}",
+        "responseBody": "={{ { success: true, dispatched: true, event_type: $env.DESILO_EVENT_TYPE || 'n8n-content-generate', hypothesis_path: $json.body.hypothesis_path, timestamp: $now.toISO() } }}",
         "options": {}
       },
-      "id": "respond-1",
+      "id": "respond-success",
       "name": "Respond Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [780, 280]
+      "position": [740, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, error: 'Invalid hypothesis_path format. Must start with 01-hypotheses/', received: $json.body.hypothesis_path } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [740, 360]
     }
   ],
   "connections": {
@@ -68,7 +115,25 @@
       "main": [
         [
           {
+            "node": "Validate Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Path": {
+      "main": [
+        [
+          {
             "node": "Dispatch to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
             "type": "main",
             "index": 0
           }

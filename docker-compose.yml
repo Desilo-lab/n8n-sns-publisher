@@ -5,20 +5,29 @@ services:
     ports:
       - "5678:5678"
     environment:
+      # n8n Server
       - N8N_HOST=${N8N_HOST:-localhost}
       - N8N_PORT=5678
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
       - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678}
+      # Database
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-n8n}
       - DB_POSTGRESDB_USER=${POSTGRES_USER:-n8n}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-n8n}
+      # Timezone
       - GENERIC_TIMEZONE=${TZ:-Asia/Seoul}
       - TZ=${TZ:-Asia/Seoul}
-      # Cross-repo dispatch token
+      # ─────────────────────────────────────
+      # Desilo Integration (repository_dispatch)
+      # ─────────────────────────────────────
       - DESILO_DISPATCH_TOKEN=${DESILO_DISPATCH_TOKEN:-}
+      - DESILO_OWNER=${DESILO_OWNER:-Desilo-team}
+      - DESILO_REPO=${DESILO_REPO:-desilo}
+      - DESILO_EVENT_TYPE=${DESILO_EVENT_TYPE:-n8n-content-generate}
+      - DESILO_API_VERSION=${DESILO_API_VERSION:-2022-11-28}
     volumes:
       - n8n_data:/home/node/.n8n
       - ./workflows:/home/node/workflows:ro
@@ -31,7 +40,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # 워크플로우 초기화 (첫 실행 시)
+  # Workflow initialization (run once with: docker compose run --rm n8n-init)
   n8n-init:
     image: n8nio/n8n:latest
     profiles: ["init"]
